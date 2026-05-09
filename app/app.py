@@ -90,23 +90,7 @@ st.markdown("""
 @import url('https://fonts.googleapis.com/css2?family=Bebas+Neue&family=DM+Sans:wght@300;400;500;600&family=JetBrains+Mono:wght@400;600&display=swap');
 
 /* ── Reset Streamlit chrome ── */
-#MainMenu, footer { visibility: hidden; }
-header { background: transparent !important; }
-
-/* Hide everything inside the header bar except the sidebar toggle */
-header > div { visibility: hidden; }
-
-/* Re-show the sidebar toggle — cover all known Streamlit selector variants */
-[data-testid="collapsedControl"],
-[data-testid="stSidebarCollapsedControl"],
-button[kind="header"],
-header button {
-    visibility: visible !important;
-    color: #C9F31D !important;
-    background: transparent !important;
-    z-index: 999 !important;
-}
-
+#MainMenu, footer, header { visibility: hidden; }
 .block-container { padding: 0 !important; max-width: 100% !important; }
 .stApp { background: #080C12 !important; }
 
@@ -492,9 +476,8 @@ header button {
     font-size: 1.0rem;
     font-weight: 600;
     color: #E8EAF0;
-    white-space: nowrap;
-    overflow: hidden;
-    text-overflow: ellipsis;
+    white-space: normal;
+    word-break: break-word;
     margin-bottom: 6px;
 }
 .rep-tags {
