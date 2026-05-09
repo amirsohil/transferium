@@ -92,10 +92,21 @@ st.markdown("""
 /* ── Reset Streamlit chrome ── */
 #MainMenu, footer { visibility: hidden; }
 header { background: transparent !important; }
-header [data-testid="stToolbar"],
-header [data-testid="stDecoration"],
-header [data-testid="stStatusWidget"] { visibility: hidden; }
-[data-testid="collapsedControl"] { visibility: visible !important; color: #C9F31D !important; }
+
+/* Hide everything inside the header bar except the sidebar toggle */
+header > div { visibility: hidden; }
+
+/* Re-show the sidebar toggle — cover all known Streamlit selector variants */
+[data-testid="collapsedControl"],
+[data-testid="stSidebarCollapsedControl"],
+button[kind="header"],
+header button {
+    visibility: visible !important;
+    color: #C9F31D !important;
+    background: transparent !important;
+    z-index: 999 !important;
+}
+
 .block-container { padding: 0 !important; max-width: 100% !important; }
 .stApp { background: #080C12 !important; }
 
