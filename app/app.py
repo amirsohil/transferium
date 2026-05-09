@@ -90,7 +90,12 @@ st.markdown("""
 @import url('https://fonts.googleapis.com/css2?family=Bebas+Neue&family=DM+Sans:wght@300;400;500;600&family=JetBrains+Mono:wght@400;600&display=swap');
 
 /* ── Reset Streamlit chrome ── */
-#MainMenu, footer, header { visibility: hidden; }
+#MainMenu, footer { visibility: hidden; }
+header { background: transparent !important; }
+header [data-testid="stToolbar"],
+header [data-testid="stDecoration"],
+header [data-testid="stStatusWidget"] { visibility: hidden; }
+[data-testid="collapsedControl"] { visibility: visible !important; color: #C9F31D !important; }
 .block-container { padding: 0 !important; max-width: 100% !important; }
 .stApp { background: #080C12 !important; }
 
