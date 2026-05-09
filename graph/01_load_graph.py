@@ -12,27 +12,16 @@ driver = GraphDatabase.driver(
 )
 
 df = pd.read_csv("data/players_clean.csv")
-
-# positions_list was saved as a string — convert back to list
 df["positions_list"] = df["positions_list"].apply(ast.literal_eval)
 
 print(f"Loaded {len(df)} players")
 
-# ── BEFORE ANYTHING: clear the database ──────────────────────────────────────
+# ── Clear database ────────────────────────────────────────────────────────────
 print("Clearing existing data...")
 with driver.session() as session:
     session.run("MATCH (n) DETACH DELETE n")
 
-# ─────────────────────────────────────────────────────────────────────────────
-# LEARN: What is Cypher?
-# Cypher is Neo4j's query language — like SQL but for graphs.
-# Instead of SELECT/JOIN, you describe PATTERNS using ASCII art:
-#   (node)-[:RELATIONSHIP]->(node)
-# MERGE = create if not exists (safe to re-run)
-# CREATE = always creates (can duplicate)
-# ─────────────────────────────────────────────────────────────────────────────
-
-# ── Step 1: Create constraints (unique indexes) ───────────────────────────────
+# ── Constraints ───────────────────────────────────────────────────────────────
 print("Creating constraints...")
 with driver.session() as session:
     session.run("CREATE CONSTRAINT IF NOT EXISTS FOR (p:Player) REQUIRE p.id IS UNIQUE")
@@ -40,42 +29,46 @@ with driver.session() as session:
     session.run("CREATE CONSTRAINT IF NOT EXISTS FOR (l:League) REQUIRE l.name IS UNIQUE")
     session.run("CREATE CONSTRAINT IF NOT EXISTS FOR (pos:Position) REQUIRE pos.code IS UNIQUE")
 
-# ── Step 2: Load Leagues ──────────────────────────────────────────────────────
+# ── Leagues ───────────────────────────────────────────────────────────────────
 print("Loading leagues...")
 leagues = df["league_name"].dropna().unique()
 with driver.session() as session:
-    for league in leagues:
-        session.run(
-            "MERGE (l:League {name: $name})",
-            name=str(league)
-        )
+    session.run("""
+        UNWIND $leagues AS name
+        MERGE (l:League {name: name})
+    """, leagues=[str(l) for l in leagues])
 print(f"  → {len(leagues)} leagues created")
 
-# ── Step 3: Load Clubs ────────────────────────────────────────────────────────
+# ── Clubs ─────────────────────────────────────────────────────────────────────
 print("Loading clubs...")
 clubs = df[["club_name", "league_name"]].dropna(subset=["club_name"]).drop_duplicates("club_name")
+club_batch = [
+    {"club": str(row["club_name"]), "league": str(row["league_name"])}
+    for _, row in clubs.iterrows()
+]
 with driver.session() as session:
-    for _, row in clubs.iterrows():
-        session.run("""
-            MERGE (c:Club {name: $club})
-            WITH c
-            MATCH (l:League {name: $league})
-            MERGE (c)-[:IN_LEAGUE]->(l)
-        """, club=str(row["club_name"]), league=str(row["league_name"]))
+    session.run("""
+        UNWIND $clubs AS c
+        MERGE (club:Club {name: c.club})
+        WITH club, c
+        MATCH (l:League {name: c.league})
+        MERGE (club)-[:IN_LEAGUE]->(l)
+    """, clubs=club_batch)
 print(f"  → {len(clubs)} clubs created")
 
-# ── Step 4: Load Positions ────────────────────────────────────────────────────
+# ── Positions ─────────────────────────────────────────────────────────────────
 print("Loading positions...")
 all_positions = set()
 for positions in df["positions_list"]:
     all_positions.update([p.strip() for p in positions])
-
 with driver.session() as session:
-    for pos in all_positions:
-        session.run("MERGE (p:Position {code: $code})", code=pos)
+    session.run("""
+        UNWIND $positions AS code
+        MERGE (p:Position {code: code})
+    """, positions=list(all_positions))
 print(f"  → {len(all_positions)} positions created")
 
-# ── Step 5: Load Players (in batches for speed) ───────────────────────────────
+# ── Players ───────────────────────────────────────────────────────────────────
 print("Loading players...")
 
 OUTFIELD_ATTRS = [
@@ -104,55 +97,77 @@ def row_to_player_dict(row):
             attrs[col] = int(val)
     return attrs
 
-BATCH_SIZE = 500
+BATCH_SIZE = 250
 rows = df.to_dict("records")
 total = len(rows)
 
 with driver.session() as session:
     for i in range(0, total, BATCH_SIZE):
         batch = rows[i:i+BATCH_SIZE]
+
+        player_batch  = []
+        position_rels = []
+        club_rels     = []
+
         for row in batch:
             attrs = row_to_player_dict(row)
             props = {
-                "id":          str(row["player_id"]),
-                "name":        str(row["short_name"]),
-                "full_name":   str(row["long_name"]),
-                "age":         int(row["age"]) if pd.notna(row["age"]) else 0,
-                "overall":     int(row["overall"]),
-                "potential":   int(row["potential"]),
-                "height_cm":   int(row["height_cm"]) if pd.notna(row["height_cm"]) else 0,
-                "weight_kg":   int(row["weight_kg"]) if pd.notna(row["weight_kg"]) else 0,
-                "preferred_foot": str(row["preferred_foot"]) if pd.notna(row["preferred_foot"]) else "",
-                "value_eur":   float(row["value_eur"]) if pd.notna(row["value_eur"]) else 0.0,
-                "wage_eur":    float(row["wage_eur"]) if pd.notna(row["wage_eur"]) else 0.0,
-                "nationality": str(row["nationality_name"]) if pd.notna(row["nationality_name"]) else "",
-                "image_url":   str(row["player_face_url"]) if pd.notna(row["player_face_url"]) else "",
-                "is_goalkeeper": bool(row["is_goalkeeper"]),
+                "id":               str(row["player_id"]),
+                "name":             str(row["short_name"]),
+                "full_name":        str(row["long_name"]),
+                "age":              int(row["age"]) if pd.notna(row["age"]) else 0,
+                "overall":          int(row["overall"]),
+                "potential":        int(row["potential"]),
+                "height_cm":        int(row["height_cm"]) if pd.notna(row["height_cm"]) else 0,
+                "weight_kg":        int(row["weight_kg"]) if pd.notna(row["weight_kg"]) else 0,
+                "preferred_foot":   str(row["preferred_foot"]) if pd.notna(row["preferred_foot"]) else "",
+                "value_eur":        float(row["value_eur"]) if pd.notna(row["value_eur"]) else 0.0,
+                "wage_eur":         float(row["wage_eur"]) if pd.notna(row["wage_eur"]) else 0.0,
+                "nationality":      str(row["nationality_name"]) if pd.notna(row["nationality_name"]) else "",
+                "image_url":        str(row["player_face_url"]) if pd.notna(row["player_face_url"]) else "",
+                "is_goalkeeper":    bool(row["is_goalkeeper"]),
                 "primary_position": str(row["primary_position"]),
                 **attrs
             }
+            player_batch.append(props)
 
-            # Create player node
-            session.run("MERGE (p:Player {id: $id}) SET p += $props", id=props["id"], props=props)
-
-            # Link to club
-            if pd.notna(row["club_name"]):
-                session.run("""
-                    MATCH (p:Player {id: $id})
-                    MATCH (c:Club {name: $club})
-                    MERGE (p)-[:PLAYS_FOR]->(c)
-                """, id=props["id"], club=str(row["club_name"]))
-
-            # Link to positions
             for idx, pos in enumerate(row["positions_list"]):
-                pos = pos.strip()
-                session.run("""
-                    MATCH (p:Player {id: $id})
-                    MATCH (pos:Position {code: $code})
-                    MERGE (p)-[:PLAYS_AT {is_primary: $primary}]->(pos)
-                """, id=props["id"], code=pos, primary=(idx == 0))
+                position_rels.append({
+                    "id":      props["id"],
+                    "code":    pos.strip(),
+                    "primary": (idx == 0)
+                })
 
-        print(f"  → Loaded {min(i+BATCH_SIZE, total)}/{total} players")
+            if pd.notna(row["club_name"]):
+                club_rels.append({
+                    "id":   props["id"],
+                    "club": str(row["club_name"])
+                })
+
+        # Write players
+        session.run("""
+            UNWIND $batch AS props
+            MERGE (p:Player {id: props.id})
+            SET p += props
+        """, batch=player_batch)
+
+        # Write position relationships
+        session.run("""
+            UNWIND $rels AS rel
+            MATCH (p:Player {id: rel.id})
+            MATCH (pos:Position {code: rel.code})
+            MERGE (p)-[:PLAYS_AT {is_primary: rel.primary}]->(pos)
+        """, rels=position_rels)
+
+        # Write club relationships
+        session.run("""
+            UNWIND $rels AS rel
+            MATCH (p:Player {id: rel.id})
+            MATCH (c:Club {name: rel.club})
+            MERGE (p)-[:PLAYS_FOR]->(c)
+        """, rels=club_rels)
+
+        print(f"  → Loaded {min(i + BATCH_SIZE, total)}/{total} players")
 
 # ── Final count ───────────────────────────────────────────────────────────────
 with driver.session() as session:
@@ -160,7 +175,7 @@ with driver.session() as session:
         MATCH (p:Player) WITH count(p) AS players
         MATCH (c:Club)   WITH players, count(c) AS clubs
         MATCH (l:League) WITH players, clubs, count(l) AS leagues
-        MATCH (pos:Position) 
+        MATCH (pos:Position)
         RETURN players, clubs, leagues, count(pos) AS positions
     """)
     counts = result.single()
