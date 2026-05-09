@@ -90,7 +90,18 @@ st.markdown("""
 @import url('https://fonts.googleapis.com/css2?family=Bebas+Neue&family=DM+Sans:wght@300;400;500;600&family=JetBrains+Mono:wght@400;600&display=swap');
 
 /* ── Reset Streamlit chrome ── */
-#MainMenu, footer, header { visibility: hidden; }
+#MainMenu, footer { visibility: hidden; }
+header { background: transparent !important; }
+header > div { visibility: hidden; }
+[data-testid="collapsedControl"],
+[data-testid="stSidebarCollapsedControl"],
+button[kind="header"],
+header button {
+    visibility: visible !important;
+    color: #C9F31D !important;
+    background: transparent !important;
+    z-index: 999 !important;
+}
 .block-container { padding: 0 !important; max-width: 100% !important; }
 .stApp { background: #080C12 !important; }
 
@@ -731,7 +742,7 @@ else:
 # ── Footer ────────────────────────────────────────────────────────────────────
 st.markdown("""
 <div class='app-footer'>
-    <div class='footer-left'>© TRANSFERIUM · BUILT BY MOHAMED AMIR SOHIL BISHRUL HAFI</div>
+    <div class='footer-left'>© TRANSFERIUM PLAYER INTELLIGENCE · BUILT BY MOHAMED AMIR SOHIL BISHRUL HAFI</div>
     <div class='footer-right'>Data: FC 26 · SoFIFA · Graph: Neo4j</div>
 </div>
 """, unsafe_allow_html=True)
